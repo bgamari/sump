@@ -24,6 +24,7 @@ module System.Hardware.Sump
     , setFlags
       -- * Acquisition
     , Sample (..)
+    , channelLevel
     , run
     ) where
 
@@ -80,11 +81,17 @@ reset = void . command [0x0] 0
 newtype Sample = Sample Word32
 
 instance Show Sample where
-    show (Sample s) = showHex 2  ""
+    show (Sample s) = showHex s ""
+
+channelLevel :: Channel -> Sample -> Level
+channelLevel (Ch c) (Sample s)
+  | bit c .&. s == 0  = Low
+  | otherwise         = High
 
 readSample :: Sump -> EitherT String IO (Maybe Sample)
 readSample sump = do
     s <- liftIO $ recv (sumpDevice sump) 4
+    liftIO $ print s
     case BS.unpack s of
       bs@[_,_,_,_] -> right $ Just $ Sample
                         $ foldl' (\accum a->(accum `shiftL` 8) .|. fromIntegral a) 0 bs
@@ -99,16 +106,25 @@ run sump = do
           case ss of
             Just s -> go $ V.snoc accum s
             Nothing -> return accum
-    go V.empty
+
+    let readFirst = do
+          ss <- readSample sump
+          case ss of
+            Just s -> return s
+            Nothing -> readFirst
+
+    first <- readFirst
+    go (V.singleton first)
 
 identify :: Sump -> EitherT String IO (ByteString, ProtocolVersion)
 identify sump = do
     reply <- BS.reverse `fmap` command [0x2] 4 sump
     let device = BS.take 3 reply
-        version = case map (chr . fromIntegral) $ BS.unpack $ BS.drop 3 reply of
-                    ['0'] -> Version0
-                    ['1'] -> Version1
-                    [c]   -> VersionUnknown c
+    version <- case map (chr . fromIntegral) $ BS.unpack $ BS.drop 3 reply of
+                   ['0'] -> right Version0
+                   ['1'] -> right Version1
+                   [c]   -> right $ VersionUnknown c
+                   []    -> left "No reply to ID command"
     return (device, version)
 
 byte :: (Integral a, Bits a) => Int -> a -> Word8
@@ -181,8 +197,8 @@ configureTrigger sump stage config@(SerialTrigger {}) = do
             , byte 1 (triggerDelay config)
             , fromIntegral (0xf .&. fromEnum (triggerChannel config))
               .|. fromIntegral (fromEnum $ triggerLevel config)
-            ,     if triggerStart config then 0x4 else 0
-              .|. 0x2
+            ,     if triggerStart config then 0x8 else 0
+              .|. 0x4
               .|. fromIntegral (0xf .&. (fromEnum $ triggerChannel config) `shiftR` 4)
             ] 0 sump
     return ()
@@ -203,9 +219,7 @@ configureTrigger sump stage config@(ParallelTrigger {triggerValues=trigger}) = d
             , byte 0 (triggerDelay config)
             , byte 1 (triggerDelay config)
             , fromIntegral (fromEnum $ triggerLevel config)
-            ,     if triggerStart config then 0x4 else 0
-              .|. 0x2
-              .|. fromIntegral (0xf .&. (fromEnum $ triggerChannel config) `shiftR` 4)
+            , if triggerStart config then 0x8 else 0
             ] 0 sump
     return ()
   where
@@ -237,16 +251,16 @@ setFlags sump flags = do
         v = foldl' (.|.) 0
             [ bit 0 `is` demux flags
             , bit 1 `is` inputFilter flags
-            , bit 2 `is` (ChGrp0 `elem` groups)
-            , bit 3 `is` (ChGrp1 `elem` groups)
-            , bit 4 `is` (ChGrp2 `elem` groups)
-            , bit 5 `is` (ChGrp3 `elem` groups)
+            , bit 2 `is` (ChGrp0 `notElem` groups)
+            , bit 3 `is` (ChGrp1 `notElem` groups)
+            , bit 4 `is` (ChGrp2 `notElem` groups)
+            , bit 5 `is` (ChGrp3 `notElem` groups)
             , bit 6 `is` externalClock flags
             , bit 7 `is` invertedClock flags
             ]
         b `is` True  = bit b
         b `is` False = 0
-    command [0x82, v] 0 sump
+    command [0x82, v, 0, 0, 0] 0 sump
     return ()
 
 -- | All groups enabled, internal clock, no demux or input filter
