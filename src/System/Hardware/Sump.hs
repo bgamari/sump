@@ -1,22 +1,30 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module System.Hardware.Sump
-    ( ProtocolVersion (..)
+    ( -- * Basic Types
+      Level (..)
+    , Channel
+    , ch
+    , ChannelGroup (..)
+    , Stage (..)
+      -- * Initialization
     , Sump
     , open
     , reset
-    , run
+    , ProtocolVersion (..)
     , identify
-    , setDivider
-    , Stage (..)
-    , Logical (..)
-    , Channel
-    , ch
+      -- * Trigger configuration
+    , Trigger (..)
     , serialTrigger
+    , configureTrigger
+      -- * Other configuration
+    , setDivider
     , setReadDelayCounts
-    , ChannelGroup (..)
     , Flags (..)
     , setFlags
+      -- * Acquisition
+    , Sample (..)
+    , run
     ) where
 
 import Data.Char (ord, chr)
@@ -24,6 +32,7 @@ import Data.Bits
 import Data.Word
 import Data.List (foldl')
 import Control.Monad (replicateM, void)
+import Numeric (showHex)
 
 import Control.Monad.Trans.Either
 import Control.Monad.IO.Class
@@ -31,6 +40,7 @@ import Control.Monad.IO.Class
 import qualified Data.Vector as V
 import qualified Data.ByteString as BS
 import           Data.ByteString (ByteString)
+import Data.Default
 
 import System.Hardware.Serialport
 
@@ -59,6 +69,7 @@ open path = do
 
 command :: [Word8] -> Int -> Sump -> EitherT String IO ByteString
 command c replyLen (Sump sump) = do
+    liftIO $ putStrLn $ concat $ map (flip showHex " ") c
     liftIO $ send sump (BS.pack c)
     reply <- liftIO $ recv sump replyLen
     return reply
@@ -67,6 +78,9 @@ reset :: Sump -> EitherT String IO ()
 reset = void . command [0x0] 0
 
 newtype Sample = Sample Word32
+
+instance Show Sample where
+    show (Sample s) = showHex 2  ""
 
 readSample :: Sump -> EitherT String IO (Maybe Sample)
 readSample sump = do
@@ -103,14 +117,16 @@ byte b a = fromIntegral $ a `shiftR` (8*b)
 word32Bytes :: Word32 -> [Word8]
 word32Bytes v = [byte 0 v, byte 1 v, byte 2 v, byte 3 v]
 
-setDivider :: Int -> Sump -> EitherT String IO ()
-setDivider d =
-    void . command [0x80, byte 0 d, byte 1 d, byte 2 d, 0] 0
+setDivider :: Sump -> Int -> EitherT String IO ()
+setDivider sump d =
+    void $ command [0x80, byte 0 d, byte 1 d, byte 2 d, 0] 0 sump
 
+-- | A trigger stage
 data Stage = Stage0 | Stage1 | Stage2 | Stage3
            deriving (Eq, Ord, Bounded, Enum, Show)
 
-data Logical = High | Low
+-- | A logical high or low
+data Level = High | Low
               deriving (Eq, Ord, Bounded, Enum, Show)
 
 -- | A logic analyzer channel
@@ -121,36 +137,66 @@ instance Bounded Channel where
     minBound = Ch 0
     maxBound = Ch 32
 
+-- | Construct a channel
 ch :: Int -> Channel
 ch c
-  | c >= minBound && c < maxBound = error "Invalid channel"
-  | otherwise                     = Ch c
+  | c >= minBound && c < maxBound = Ch c
+  | otherwise                     = error "Invalid channel"
 
 channelBit :: Bits a => Channel -> a
 channelBit (Ch c) = bit c
 
--- | Configure serial triggering
-serialTrigger :: [(Channel, Logical)] -> Sump -> EitherT String IO ()
-serialTrigger triggers sump = do
+data Trigger
+    = SerialTrigger { triggerDelay    :: Word32
+                    , triggerLevel    :: Level
+                    , triggerChannel  :: Channel
+                    , triggerStart    :: Bool
+                    , triggerValues   :: [(Channel, Level)]
+                    }
+    | ParallelTrigger { triggerDelay   :: Word32
+                      , triggerLevel   :: Level
+                      , triggerStart   :: Bool
+                      , triggerValue   :: Word32
+                      }
+
+serialTrigger :: [(Channel, Level)] -> Trigger
+serialTrigger values =
+    SerialTrigger { triggerDelay = 0
+                  , triggerLevel = Low
+                  , triggerChannel = Ch 0
+                  , triggerStart = True
+                  , triggerValues = values
+                  }
+
+configureTrigger :: Sump
+               -> Stage
+               -> Trigger
+               -> EitherT String IO ()
+configureTrigger sump stage config@(SerialTrigger {triggerValues=triggers}) = do
     let mask = foldl' (.|.) 0 $ map (channelBit . fst) triggers
         values = foldl' (.|.) 0
                $ map (\(c,v)->case v of
                                 High -> bit $ channelBit c
                                 Low  -> 0)
                $ triggers
-    command (0xc0 : word32Bytes mask) 0 sump
-    command (0xc1 : word32Bytes values) 0 sump
+        forStage :: Word8 -> Word8
+        forStage cmd = cmd .|. (fromIntegral (fromEnum stage) `shiftR` 2)
+    command (forStage 0xc0 : word32Bytes mask) 0 sump
+    command (forStage 0xc1 : word32Bytes values) 0 sump
     return ()
+configureStage sump stage config@(ParallelTrigger {triggerValue=trigger}) = do
+    error "not implemented"
 
-setReadDelayCounts :: Word16 -- ^ Read count
+setReadDelayCounts :: Sump
+                   -> Word16 -- ^ Read count
                    -> Word16 -- ^ Delay count
-                   -> Sump
                    -> EitherT String IO ()
-setReadDelayCounts read delay = do
-    void . command [0x81, byte 0 read, byte 1 read, byte 0 delay, byte 1 delay] 0
+setReadDelayCounts sump read delay = do
+    let c = [0x81, byte 0 read, byte 1 read, byte 0 delay, byte 1 delay]
+    void $ command c 0 sump
 
 data ChannelGroup = ChGrp0 | ChGrp1 | ChGrp2 | ChGrp3
-                  deriving (Show, Eq, Ord)
+                  deriving (Show, Eq, Ord, Bounded, Enum)
 
 data Flags = Flags { demux :: Bool
                    , inputFilter :: Bool
@@ -160,8 +206,8 @@ data Flags = Flags { demux :: Bool
                    }
            deriving (Show)
 
-setFlags :: Flags -> Sump -> EitherT String IO ()
-setFlags flags sump = do
+setFlags :: Sump -> Flags -> EitherT String IO ()
+setFlags sump flags = do
     let groups = enabledGroups flags
         v = foldl' (.|.) 0
             [ bit 0 `is` demux flags
@@ -177,3 +223,12 @@ setFlags flags sump = do
         b `is` False = 0
     command [0x82, v] 0 sump
     return ()
+
+-- | All groups enabled, internal clock, no demux or input filter
+instance Default Flags where
+    def = Flags { demux = False
+                , inputFilter = False
+                , enabledGroups = [minBound .. maxBound]
+                , externalClock = False
+                , invertedClock = False
+                }
