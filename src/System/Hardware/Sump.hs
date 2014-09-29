@@ -91,10 +91,11 @@ channelLevel (Ch c) (Sample s)
 readSample :: Sump -> EitherT String IO (Maybe Sample)
 readSample sump = do
     s <- liftIO $ recv (sumpDevice sump) 4
-    liftIO $ print s
+    --liftIO $ print s
     case BS.unpack s of
       bs@[_,_,_,_] -> right $ Just $ Sample
-                        $ foldl' (\accum a->(accum `shiftL` 8) .|. fromIntegral a) 0 bs
+                        $ foldl' (\accum a->(accum `shiftL` 8) .|. fromIntegral a) 0
+                        $ reverse bs
       []           -> right Nothing
       _            -> left "Unknown response"
 
@@ -105,7 +106,7 @@ run sump = do
           ss <- readSample sump
           case ss of
             Just s -> go $ V.snoc accum s
-            Nothing -> return accum
+            Nothing -> return $ V.reverse accum
 
     let readFirst = do
           ss <- readSample sump
