@@ -12,7 +12,7 @@ main = printing $ runEitherT $ do
     Sump.identify sump >>= liftIO . print
     --Sump.setDivider sump 4
     Sump.setFlags sump def
-    let trig = Sump.serialTrigger [(ch 0, Low)]
+    let trig = Sump.levelTrigger [(ch 0, Low)]
     Sump.configureTrigger sump Stage0 trig
     Sump.setReadDelayCounts sump 0xffff 0
     Sump.run sump >>= liftIO . print

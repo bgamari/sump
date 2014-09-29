@@ -15,7 +15,7 @@ module System.Hardware.Sump
     , identify
       -- * Trigger configuration
     , Trigger (..)
-    , serialTrigger
+    , levelTrigger
     , configureTrigger
       -- * Other configuration
     , setDivider
@@ -147,45 +147,70 @@ channelBit :: Bits a => Channel -> a
 channelBit (Ch c) = bit c
 
 data Trigger
-    = SerialTrigger { triggerDelay    :: Word32
-                    , triggerLevel    :: Level
+    = SerialTrigger { triggerDelay    :: Word16
+                    , triggerLevel    :: Word8
                     , triggerChannel  :: Channel
                     , triggerStart    :: Bool
-                    , triggerValues   :: [(Channel, Level)]
+                    , triggerMask     :: Word32
+                    , triggerValue    :: Word32
                     }
-    | ParallelTrigger { triggerDelay   :: Word32
-                      , triggerLevel   :: Level
+    | ParallelTrigger { triggerDelay   :: Word16
+                      , triggerLevel   :: Word8
                       , triggerStart   :: Bool
-                      , triggerValue   :: Word32
+                      , triggerValues  :: [(Channel, Level)]
                       }
 
-serialTrigger :: [(Channel, Level)] -> Trigger
-serialTrigger values =
-    SerialTrigger { triggerDelay = 0
-                  , triggerLevel = Low
-                  , triggerChannel = Ch 0
-                  , triggerStart = True
-                  , triggerValues = values
-                  }
+-- | Trigger on the simultaneous levels of a set of channels
+levelTrigger :: [(Channel, Level)] -> Trigger
+levelTrigger values =
+    ParallelTrigger { triggerDelay  = 0
+                    , triggerLevel  = 0
+                    , triggerStart  = True
+                    , triggerValues = values
+                    }
 
 configureTrigger :: Sump
                -> Stage
                -> Trigger
                -> EitherT String IO ()
-configureTrigger sump stage config@(SerialTrigger {triggerValues=triggers}) = do
-    let mask = foldl' (.|.) 0 $ map (channelBit . fst) triggers
+configureTrigger sump stage config@(SerialTrigger {}) = do
+    command (forStage 0xc0 : word32Bytes (triggerMask config)) 0 sump
+    command (forStage 0xc1 : word32Bytes (triggerValue config)) 0 sump
+    command [ forStage 0xc2
+            , byte 0 (triggerDelay config)
+            , byte 1 (triggerDelay config)
+            , fromIntegral (0xf .&. fromEnum (triggerChannel config))
+              .|. fromIntegral (fromEnum $ triggerLevel config)
+            ,     if triggerStart config then 0x4 else 0
+              .|. 0x2
+              .|. fromIntegral (0xf .&. (fromEnum $ triggerChannel config) `shiftR` 4)
+            ] 0 sump
+    return ()
+  where
+    forStage :: Word8 -> Word8
+    forStage cmd = cmd .|. (fromIntegral (fromEnum stage) `shiftR` 2)
+
+configureTrigger sump stage config@(ParallelTrigger {triggerValues=trigger}) = do
+    let mask = foldl' (.|.) 0 $ map (channelBit . fst) trigger
         values = foldl' (.|.) 0
                $ map (\(c,v)->case v of
                                 High -> bit $ channelBit c
                                 Low  -> 0)
-               $ triggers
-        forStage :: Word8 -> Word8
-        forStage cmd = cmd .|. (fromIntegral (fromEnum stage) `shiftR` 2)
+               $ trigger
     command (forStage 0xc0 : word32Bytes mask) 0 sump
     command (forStage 0xc1 : word32Bytes values) 0 sump
+    command [ forStage 0xc2
+            , byte 0 (triggerDelay config)
+            , byte 1 (triggerDelay config)
+            , fromIntegral (fromEnum $ triggerLevel config)
+            ,     if triggerStart config then 0x4 else 0
+              .|. 0x2
+              .|. fromIntegral (0xf .&. (fromEnum $ triggerChannel config) `shiftR` 4)
+            ] 0 sump
     return ()
-configureStage sump stage config@(ParallelTrigger {triggerValue=trigger}) = do
-    error "not implemented"
+  where
+    forStage :: Word8 -> Word8
+    forStage cmd = cmd .|. (fromIntegral (fromEnum stage) `shiftR` 2)
 
 setReadDelayCounts :: Sump
                    -> Word16 -- ^ Read count
