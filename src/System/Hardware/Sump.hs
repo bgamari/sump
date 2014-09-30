@@ -3,6 +3,7 @@
 module System.Hardware.Sump
     ( -- * Basic Types
       Level (..)
+    , isLow, isHigh
     , Channel
     , ch
     , ChannelGroup (..)
@@ -146,6 +147,13 @@ data Stage = Stage0 | Stage1 | Stage2 | Stage3
 data Level = High | Low
               deriving (Eq, Ord, Bounded, Enum, Show)
 
+isLow :: Level -> Bool
+isLow Low  = True
+isLow High = False
+
+isHigh :: Level -> Bool
+isHigh = not . isLow
+      
 -- | A logic analyzer channel
 newtype Channel = Ch Int
               deriving (Eq, Ord, Enum, Show)
