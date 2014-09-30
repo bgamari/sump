@@ -1,12 +1,15 @@
 {-# LANGUAGE FlexibleContexts #-}
 
+import Debug.Trace
+import Prelude hiding (mapM_, concatMap)
+import Data.Foldable
 import Data.Bits
-import Data.List (foldl')
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Either
 import Control.Monad.Trans.State
 import Control.Monad.Trans.Writer
 import Control.Lens hiding (Level, (#), none)
+import Numeric.Lens (hex)
 
 import qualified Data.Vector as V
 import System.Hardware.Sump as Sump
@@ -20,12 +23,6 @@ import qualified Data.Machine as M
 
 printing :: Show a => IO a -> IO ()
 printing action = action >>= print
-
-decodeInt :: [Level] -> Integer
-decodeInt = foldl' (.|.) 0 . zipWith bitOf [0..]
-  where
-    bitOf i High = bit i
-    bitOf _ Low  = 0
 
 main :: IO ()
 main = printing $ runEitherT $ do
@@ -43,7 +40,6 @@ main = printing $ runEitherT $ do
                                          (channelLevel (ch 1) s))
                      $ V.toList samples    
         events = M.run $ M.supply i2cSignals (M.auto decode)
-    liftIO $ mapM_ print events
     let eventPic ev = circle 2 # lw none # fc color
           where
             color = case ev of
@@ -52,14 +48,23 @@ main = printing $ runEitherT $ do
                       (Bit _)     -> black
                       (Invalid _) -> red
         eventDia = mconcat $ zipWith (\t v->maybe mempty eventPic v # translateX t) [0..] events
+        words = transactions $ toListOf (each . _Just) events
+        wordDia = mconcat
+                  $ map (\(word,start,end)-> 
+                            text (word ^. to transWord . re hex) # fontSizeG 2
+                            <> rect (realToFrac $ end-start) 1
+                               # translateX (realToFrac start))
+                  $ words
+    liftIO $ print $ toListOf (each . _1 . to transWord . re hex) words
 
     --let channels = [minBound..maxBound]
     let channels = [ ch 0, ch 1 ]
     liftIO $ renderSVG "out.svg"
                        (mkSizeSpec Nothing Nothing)
-                       (vcat' (def & sep .~ 1) [ eventDia
+                       (vcat' (def & sep .~ 1) [ wordDia, eventDia
                                                , scaleY 10 $ samplesToDiagram channels samples])
     return ()
+
 
 samplesToDiagram :: Renderable (Path R2) b
                  => [Channel] -> V.Vector Sample -> Diagram b R2
