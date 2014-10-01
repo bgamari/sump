@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-import Debug.Trace
 import Prelude hiding (mapM_, concatMap)
 import Data.Foldable
 import Data.Bits
@@ -24,17 +23,23 @@ import qualified Data.Machine as M
 printing :: Show a => IO a -> IO ()
 printing action = action >>= print
 
-main :: IO ()
-main = printing $ runEitherT $ do
-    sump <- Sump.open "/dev/ttyACM0"
-    liftIO $ print (def :: Flags)
+acquire :: FilePath -> EitherT String IO (V.Vector Sample)
+acquire path = do
+    sump <- Sump.open path
     Sump.identify sump >>= liftIO . print
     Sump.setDivider sump 0x80
     Sump.setFlags sump def
     let trig = Sump.levelTrigger [(ch 0, Low)]
     Sump.configureTrigger sump Stage0 trig
     Sump.setReadDelayCounts sump 0x0110 0x0100
-    samples <- Sump.run sump
+    Sump.run sump
+
+main :: IO ()
+main = printing $ runEitherT $ do
+    --samples <- acquire "/dev/ttyACM0"
+    --liftIO $ writeFile "samples.out" $ show samples
+    return () :: EitherT String IO ()
+    samples <- liftIO (fmap read $ readFile "samples.out" :: IO (V.Vector Sample))
 
     let i2cSignals = map (\s->I2cSignals (channelLevel (ch 0) s)
                                          (channelLevel (ch 1) s))

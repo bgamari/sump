@@ -34,7 +34,7 @@ import Data.Bits
 import Data.Word
 import Data.List (foldl')
 import Control.Monad (replicateM, void)
-import Numeric (showHex)
+import Numeric (readHex, showHex)
 
 import Control.Monad.Trans.Either
 import Control.Monad.IO.Class
@@ -83,6 +83,9 @@ newtype Sample = Sample Word32
 
 instance Show Sample where
     show (Sample s) = showHex s ""
+
+instance Read Sample where
+    readsPrec _ = map (\(a,b)->(Sample a, b)) . readHex
 
 channelLevel :: Channel -> Sample -> Level
 channelLevel (Ch c) (Sample s)
