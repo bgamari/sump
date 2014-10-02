@@ -11,10 +11,12 @@ module I2c
       -- * Transaction parsing
     , AckNack (..)
     , _Ack, _Nack
-    , Transaction (..)
-    , transactions
+    , Transfer (..)
+    , _Transfer, _InvalidTransfer
+    , transfers
     ) where
 
+import Debug.Trace
 import Prelude hiding ((.))
 import Control.Category
 import Control.Applicative
@@ -112,30 +114,42 @@ data AckNack = Ack | Nack
 
 makePrisms ''AckNack
 
-data Transaction = Trans { transWord :: Word8
-                         , transStatus :: AckNack
+data Transfer = Transfer { _transferWord :: Word8
+                         , _transferStatus :: AckNack
                          }
-                 deriving (Show)
+              | InvalidTransfer { _transferError :: String }
+              deriving (Show)
+makePrisms ''Transfer
 
-transactions :: [I2cEvent] -> [(Transaction, Int, Int)]
-transactions = go . zip [0..]
+-- | Extract the transferred bytes from a stream of I2C events
+transfers :: [I2cEvent] -> [(Transfer, Int, Int)]
+transfers = findNext . zip [0..]
   where
-    go :: [(Int, I2cEvent)] -> [(Transaction, Int, Int)]
-    go events
-      | [] <- events' = []
-      | [] <- bits    = go rest
-      | otherwise     =
-        (trans, fst $ head events', fst $ last bits) : go rest
+    -- drop until event after first start
+    findNext :: [(Int, I2cEvent)] -> [(Transfer, Int, Int)]
+    findNext []  = []
+    findNext evs = readTransfer 8 0 $ drop 1 $ dropWhile (isn't _Start . snd) evs
+
+    readTransfer :: Int -> Word8 -> [(Int, I2cEvent)] -> [(Transfer, Int, Int)]
+    readTransfer _    _    []                =
+        (InvalidTransfer "Incomplete transfer", 0,0) : []
+    readTransfer 0 word ((n, Bit b):rest)    =
+        (Transfer word status, n-9, n) : endTransfer rest
       where
-        events' = dropWhile (isn't _Start . snd) events
-        (bits, rest) = break (not . isn't _Stop . snd) events'
-        status = case snd $ last bits of
-                     Bit Low  -> Ack
-                     Bit High -> Nack
-        word = decodeInt $ toListOf (each . _2 . _Bit) $ init bits
-        trans = Trans { transWord = word
-                      , transStatus = status
-                      }
+        status = case b of
+                     Low  -> Ack
+                     High -> Nack
+    readTransfer n    word ((_, Bit b):rest) =
+        readTransfer (n-1) (word .|. (toNum b `shiftL` (n-1))) rest
+      where
+        toNum Low  = 0
+        toNum High = 1
+    readTransfer _    word ((n,ev):rest) =
+        (InvalidTransfer ("Invalid event during transfer: "++show ev), n, n) : findNext rest
+
+    endTransfer :: [(Int, I2cEvent)] -> [(Transfer, Int, Int)]
+    endTransfer ((_, Stop):rest) = findNext rest
+    endTransfer events           = readTransfer 8 0 events
 
 -- | Construct an integer from its bits, least significant bit first
 decodeInt :: (Num a, Bits a) => [Level] -> a

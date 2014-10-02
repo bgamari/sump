@@ -38,7 +38,6 @@ main :: IO ()
 main = printing $ runEitherT $ do
     --samples <- acquire "/dev/ttyACM0"
     --liftIO $ writeFile "samples.out" $ show samples
-    return () :: EitherT String IO ()
     samples <- liftIO (fmap read $ readFile "samples.out" :: IO (V.Vector Sample))
 
     let i2cSignals = map (\s->I2cSignals (channelLevel (ch 0) s)
@@ -53,14 +52,15 @@ main = printing $ runEitherT $ do
                       (Bit _)     -> black
                       (Invalid _) -> red
         eventDia = mconcat $ zipWith (\t v->maybe mempty eventPic v # translateX t) [0..] events
-        words = transactions $ toListOf (each . _Just) events
-        wordDia = mconcat
-                  $ map (\(word,start,end)-> 
-                            text (word ^. to transWord . re hex) # fontSizeG 2
-                            <> rect (realToFrac $ end-start) 1
-                               # translateX (realToFrac start))
-                  $ words
-    liftIO $ print $ toListOf (each . _1 . to transWord . re hex) words
+        words = transfers $ toListOf (each . _Just) events
+        --wordDia = mconcat
+        --          $ map (\(word,start,end)-> 
+        --                    text (word ^. to transWord . re hex) # fontSizeG 2
+        --                    <> rect (realToFrac $ end-start) 1
+        --                       # translateX (realToFrac start))
+        --          $ words
+        wordDia = mempty
+    liftIO $ print $ toListOf (each . _1 . _Transfer . _1 . re hex) words
 
     --let channels = [minBound..maxBound]
     let channels = [ ch 0, ch 1 ]
@@ -68,7 +68,7 @@ main = printing $ runEitherT $ do
                        (mkSizeSpec Nothing Nothing)
                        (vcat' (def & sep .~ 1) [ wordDia, eventDia
                                                , scaleY 10 $ samplesToDiagram channels samples])
-    return ()
+    return () :: EitherT String IO ()
 
 
 samplesToDiagram :: Renderable (Path R2) b
