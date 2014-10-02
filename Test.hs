@@ -42,7 +42,7 @@ main = printing $ runEitherT $ do
 
     let i2cSignals = map (\s->I2cSignals (channelLevel (ch 0) s)
                                          (channelLevel (ch 1) s))
-                     $ V.toList samples    
+                     $ V.toList samples
         events = M.run $ M.supply i2cSignals (M.auto decode)
     let eventPic ev = circle 2 # lw none # fc color
           where
@@ -52,21 +52,23 @@ main = printing $ runEitherT $ do
                       (Bit _)     -> black
                       (Invalid _) -> red
         eventDia = mconcat $ zipWith (\t v->maybe mempty eventPic v # translateX t) [0..] events
-        words = transfers $ toListOf (each . _Just) events
-        --wordDia = mconcat
-        --          $ map (\(word,start,end)-> 
-        --                    text (word ^. to transWord . re hex) # fontSizeG 2
-        --                    <> rect (realToFrac $ end-start) 1
-        --                       # translateX (realToFrac start))
-        --          $ words
-        wordDia = mempty
-    liftIO $ print $ toListOf (each . _1 . _Transfer . _1 . re hex) words
+        transfers = decodeTransfers $ toListOf (each . _Just) events
+        wordDia (Right (Transfer word status)) =
+            text (word ^. re hex) # fontSizeG 2
+            <> rect 9 1
+        wordDia _ = mempty
+        transfersDia =
+            mconcat
+            $ map (\(transfer,start,end)->
+                      wordDia transfer # translateX (realToFrac start))
+            $ transfers
+    liftIO $ print $ toListOf (each . _1 . _Right . transferWord . re hex) transfers
 
     --let channels = [minBound..maxBound]
     let channels = [ ch 0, ch 1 ]
     liftIO $ renderSVG "out.svg"
                        (mkSizeSpec Nothing Nothing)
-                       (vcat' (def & sep .~ 1) [ wordDia, eventDia
+                       (vcat' (def & sep .~ 1) [ transfersDia, eventDia
                                                , scaleY 10 $ samplesToDiagram channels samples])
     return () :: EitherT String IO ()
 

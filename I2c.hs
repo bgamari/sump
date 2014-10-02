@@ -12,8 +12,8 @@ module I2c
     , AckNack (..)
     , _Ack, _Nack
     , Transfer (..)
-    , _Transfer, _InvalidTransfer
-    , transfers
+    , transferWord, transferStatus
+    , decodeTransfers
     ) where
 
 import Debug.Trace
@@ -117,24 +117,23 @@ makePrisms ''AckNack
 data Transfer = Transfer { _transferWord :: Word8
                          , _transferStatus :: AckNack
                          }
-              | InvalidTransfer { _transferError :: String }
               deriving (Show)
-makePrisms ''Transfer
+makeLenses ''Transfer
 
 -- | Extract the transferred bytes from a stream of I2C events
-transfers :: [I2cEvent] -> [(Transfer, Int, Int)]
-transfers = findNext . zip [0..]
+decodeTransfers :: [I2cEvent] -> [(Either String Transfer, Int, Int)]
+decodeTransfers = findNext . zip [0..]
   where
     -- drop until event after first start
-    findNext :: [(Int, I2cEvent)] -> [(Transfer, Int, Int)]
+    findNext :: [(Int, I2cEvent)] -> [(Either String Transfer, Int, Int)]
     findNext []  = []
     findNext evs = readTransfer 8 0 $ drop 1 $ dropWhile (isn't _Start . snd) evs
 
-    readTransfer :: Int -> Word8 -> [(Int, I2cEvent)] -> [(Transfer, Int, Int)]
+    readTransfer :: Int -> Word8 -> [(Int, I2cEvent)] -> [(Either String Transfer, Int, Int)]
     readTransfer _    _    []                =
-        (InvalidTransfer "Incomplete transfer", 0,0) : []
+        (Left "Incomplete transfer", 0,0) : []
     readTransfer 0 word ((n, Bit b):rest)    =
-        (Transfer word status, n-9, n) : endTransfer rest
+        (Right $ Transfer word status, n-9, n) : endTransfer rest
       where
         status = case b of
                      Low  -> Ack
@@ -145,9 +144,9 @@ transfers = findNext . zip [0..]
         toNum Low  = 0
         toNum High = 1
     readTransfer _    word ((n,ev):rest) =
-        (InvalidTransfer ("Invalid event during transfer: "++show ev), n, n) : findNext rest
+        (Left ("Invalid event during transfer: "++show ev), n, n) : findNext rest
 
-    endTransfer :: [(Int, I2cEvent)] -> [(Transfer, Int, Int)]
+    endTransfer :: [(Int, I2cEvent)] -> [(Either String Transfer, Int, Int)]
     endTransfer ((_, Stop):rest) = findNext rest
     endTransfer events           = readTransfer 8 0 events
 
