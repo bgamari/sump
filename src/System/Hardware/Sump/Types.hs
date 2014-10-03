@@ -21,7 +21,7 @@ import Control.Lens hiding (Level)
 
 -- | A logical high or low
 data Level = High | Low
-              deriving (Eq, Ord, Bounded, Enum, Show)
+           deriving (Eq, Ord, Bounded, Enum, Show)
 
 makePrisms ''Level
 
