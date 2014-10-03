@@ -28,11 +28,11 @@ module System.Hardware.Sump
     , run
     ) where
 
-import Data.Char (ord, chr)
+import Data.Char (chr)
 import Data.Bits
 import Data.Word
 import Data.List (foldl')
-import Control.Monad (replicateM, void)
+import Control.Monad (replicateM_, void)
 import Numeric (readHex, showHex)
 
 import Control.Monad.Trans.Either
@@ -62,7 +62,7 @@ open path = do
     s <- liftIO $ openSerial path settings
     liftIO $ flush s
     let sump = Sump s
-    replicateM 5 $ command [0x0] 0 sump -- reset
+    replicateM_ 5 $ command [0x0] 0 sump -- reset
     return sump
   where
     settings = defaultSerialSettings { commSpeed = CS115200
@@ -72,7 +72,7 @@ open path = do
 command :: [Word8] -> Int -> Sump -> EitherT String IO ByteString
 command c replyLen (Sump sump) = do
     liftIO $ putStrLn $ concat $ map (flip showHex " ") c
-    liftIO $ send sump (BS.pack c)
+    void $ liftIO $ send sump (BS.pack c)
     reply <- liftIO $ recv sump replyLen
     return reply
 
@@ -105,7 +105,7 @@ readSample sump = do
 
 run :: Sump -> EitherT String IO (V.Vector Sample)
 run sump = do
-    command [0x1] 0 sump
+    void $ command [0x1] 0 sump
     let go accum = do
           ss <- readSample sump
           case ss of
@@ -130,6 +130,7 @@ identify sump = do
                    ['1'] -> right Version1
                    [c]   -> right $ VersionUnknown c
                    []    -> left "No reply to ID command"
+                   _     -> error "identify: This can't happen"
     return (device, version)
 
 byte :: (Integral a, Bits a) => Int -> a -> Word8
@@ -191,8 +192,8 @@ configureTrigger :: Sump
                -> Trigger
                -> EitherT String IO ()
 configureTrigger sump stage config@(SerialTrigger {}) = do
-    command (forStage 0xc0 : word32Bytes (triggerMask config)) 0 sump
-    command (forStage 0xc1 : word32Bytes (triggerValue config)) 0 sump
+    void $ command (forStage 0xc0 : word32Bytes (triggerMask config)) 0 sump
+    void $ command (forStage 0xc1 : word32Bytes (triggerValue config)) 0 sump
     command [ forStage 0xc2
             , byte 0 (triggerDelay config)
             , byte 1 (triggerDelay config)
@@ -214,14 +215,15 @@ configureTrigger sump stage config@(ParallelTrigger {triggerValues=trigger}) = d
                                 High -> bit $ channelBit c
                                 Low  -> 0)
                $ trigger
-    command (forStage 0xc0 : word32Bytes mask) 0 sump
-    command (forStage 0xc1 : word32Bytes values) 0 sump
-    command [ forStage 0xc2
-            , byte 0 (triggerDelay config)
-            , byte 1 (triggerDelay config)
-            , fromIntegral (fromEnum $ triggerLevel config)
-            , if triggerStart config then 0x8 else 0
-            ] 0 sump
+    void $ command (forStage 0xc0 : word32Bytes mask) 0 sump
+    void $ command (forStage 0xc1 : word32Bytes values) 0 sump
+    void $ command
+        [ forStage 0xc2
+        , byte 0 (triggerDelay config)
+        , byte 1 (triggerDelay config)
+        , fromIntegral (fromEnum $ triggerLevel config)
+        , if triggerStart config then 0x8 else 0
+        ] 0 sump
     return ()
   where
     forStage :: Word8 -> Word8
@@ -231,8 +233,10 @@ setReadDelayCounts :: Sump
                    -> Word16 -- ^ Read count
                    -> Word16 -- ^ Delay count
                    -> EitherT String IO ()
-setReadDelayCounts sump read delay = do
-    let c = [0x81, byte 0 read, byte 1 read, byte 0 delay, byte 1 delay]
+setReadDelayCounts sump readCnt delayCnt = do
+    let c = [ 0x81
+            , byte 0 readCnt, byte 1 readCnt
+            , byte 0 delayCnt, byte 1 delayCnt]
     void $ command c 0 sump
 
 data ChannelGroup = ChGrp0 | ChGrp1 | ChGrp2 | ChGrp3
@@ -260,8 +264,8 @@ setFlags sump flags = do
             , bit 7 `is` invertedClock flags
             ]
         b `is` True  = bit b
-        b `is` False = 0
-    command [0x82, v, 0, 0, 0] 0 sump
+        _ `is` False = 0
+    void $ command [0x82, v, 0, 0, 0] 0 sump
     return ()
 
 -- | All groups enabled, internal clock, no demux or input filter
