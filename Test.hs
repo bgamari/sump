@@ -16,6 +16,7 @@ import System.Hardware.Sump as Sump
 import Data.Default
 import Diagrams.Prelude
 import Diagrams.Backend.SVG
+import Graphics.SVGFonts.ReadFont
 
 import I2c
 import qualified Data.Machine as M
@@ -54,7 +55,7 @@ main = printing $ runEitherT $ do
         eventDia = mconcat $ zipWith (\t v->maybe mempty eventPic v # translateX t) [0..] events
         transfers = decodeTransfers [(n, t) | (n, Just t) <- zip [Time 0..] events]
         wordDia (Right (Transfer word status)) length =
-               text (word ^. re hex) # fontSizeL 10 # fc brown
+               stroke (textSVG (word ^. re hex) 14) # fc black # lw none
             <> rect (realToFrac length) 1 # lw none # fc blue
         wordDia _ _ = mempty
         transfersDia =
@@ -69,7 +70,7 @@ main = printing $ runEitherT $ do
     let channels = [ ch 0, ch 1 ]
     liftIO $ renderSVG "out.svg"
                        (mkSizeSpec Nothing Nothing)
-                       (vcat' (def & sep .~ 1) [ transfersDia # padY 10, eventDia
+                       (vcat' (def & sep .~ 1) [ transfersDia # padY 2, eventDia
                                                , scaleY 10 $ samplesToDiagram channels samples])
     return () :: EitherT String IO ()
 
