@@ -28,7 +28,6 @@ import Data.Word
 
 import Control.Lens hiding (Level)
 import Data.Machine hiding (Stop)
-import Data.Profunctor
 
 import System.Hardware.Sump
 
@@ -46,20 +45,6 @@ data I2cEvent = Start
               deriving (Show)
 
 makePrisms ''I2cEvent
-
-data Edge = Falling | Rising
-          deriving (Show, Eq, Ord)
-
-startLevel :: Edge -> Level
-startLevel Falling = High
-startLevel Rising  = Low
-
-finalLevel :: Edge -> Level
-finalLevel = invert . startLevel
-
-invert :: Level -> Level
-invert Low = High
-invert High = Low
 
 edges :: Mealy Level (Maybe Edge)
 edges = Mealy $ \l -> (Nothing, go l)
