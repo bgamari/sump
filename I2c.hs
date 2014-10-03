@@ -120,33 +120,40 @@ data Transfer = Transfer { _transferWord :: Word8
               deriving (Show)
 makeLenses ''Transfer
 
+newtype Time = Time Int
+             deriving (Show, Ord, Eq, Enum)
+
 -- | Extract the transferred bytes from a stream of I2C events
-decodeTransfers :: [I2cEvent] -> [(Either String Transfer, Int, Int)]
-decodeTransfers = findNext . zip [0..]
+decodeTransfers :: [(Time, I2cEvent)] -> [(Either String Transfer, Time, Time)]
+decodeTransfers = findNext
   where
     -- drop until event after first start
-    findNext :: [(Int, I2cEvent)] -> [(Either String Transfer, Int, Int)]
+    findNext :: [(Time, I2cEvent)] -> [(Either String Transfer, Time, Time)]
     findNext []  = []
-    findNext evs = readTransfer 8 0 $ drop 1 $ dropWhile (isn't _Start . snd) evs
+    findNext evs =
+        case drop 1 $ dropWhile (isn't _Start . snd) evs of
+          evs'@((t,_):_) -> readTransfer t 8 0 
+          []             -> []
 
-    readTransfer :: Int -> Word8 -> [(Int, I2cEvent)] -> [(Either String Transfer, Int, Int)]
-    readTransfer _    _    []                =
+    readTransfer :: Time -> Int -> Word8
+                 -> [(Time, I2cEvent)] -> [(Either String Transfer, Time, Time)]
+    readTransfer _ _    _    []                =
         (Left "Incomplete transfer", 0,0) : []
-    readTransfer 0 word ((n, Bit b):rest)    =
-        (Right $ Transfer word status, n-9, n) : endTransfer rest
+    readTransfer startT 0 word ((n, Bit b):rest)    =
+        (Right $ Transfer word status, startT, n) : endTransfer rest
       where
         status = case b of
                      Low  -> Ack
                      High -> Nack
-    readTransfer n    word ((_, Bit b):rest) =
-        readTransfer (n-1) (word .|. (toNum b `shiftL` (n-1))) rest
+    readTransfer startT n    word ((_, Bit b):rest) =
+        readTransfer startT (n-1) (word .|. (toNum b `shiftL` (n-1))) rest
       where
         toNum Low  = 0
         toNum High = 1
-    readTransfer _    word ((n,ev):rest) =
+    readTransfer _ _    word ((n,ev):rest) =
         (Left ("Invalid event during transfer: "++show ev), n, n) : findNext rest
 
-    endTransfer :: [(Int, I2cEvent)] -> [(Either String Transfer, Int, Int)]
+    endTransfer :: [(Time, I2cEvent)] -> [(Either String Transfer, Time, Time)]
     endTransfer ((_, Stop):rest) = findNext rest
     endTransfer events           = readTransfer 8 0 events
 

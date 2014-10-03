@@ -52,10 +52,10 @@ main = printing $ runEitherT $ do
                       (Bit _)     -> black
                       (Invalid _) -> red
         eventDia = mconcat $ zipWith (\t v->maybe mempty eventPic v # translateX t) [0..] events
-        transfers = decodeTransfers $ toListOf (each . _Just) events
+        transfers = decodeTransfers [(n, t) | (n, Just t) <- zip [0..] events]
         wordDia (Right (Transfer word status)) =
-            text (word ^. re hex) # fontSizeG 2
-            <> rect 9 1
+               text (word ^. re hex) # fontSizeL 10 # fc brown
+            <> rect 9 1 # lw none # fc blue
         wordDia _ = mempty
         transfersDia =
             mconcat
@@ -68,7 +68,7 @@ main = printing $ runEitherT $ do
     let channels = [ ch 0, ch 1 ]
     liftIO $ renderSVG "out.svg"
                        (mkSizeSpec Nothing Nothing)
-                       (vcat' (def & sep .~ 1) [ transfersDia, eventDia
+                       (vcat' (def & sep .~ 1) [ transfersDia # padY 10, eventDia
                                                , scaleY 10 $ samplesToDiagram channels samples])
     return () :: EitherT String IO ()
 
