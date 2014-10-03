@@ -127,21 +127,25 @@ decodeTransfers = findNext
 
     readTransfer :: Time -> Int -> Word8
                  -> [(Time, I2cEvent)] -> [(Either String Transfer, Time, Time)]
-    readTransfer startT _    _    []                =
+
+    readTransfer startT _ _ [] =
         (Left "Incomplete transfer", startT, startT) : []
-    readTransfer startT 0 word ((n, Bit b):rest)    =
-        (Right $ Transfer word status, startT, n) : endTransfer rest
+
+    readTransfer startT 0 word ((t, Bit b):rest)    =
+        (Right $ Transfer word status, startT, t) : endTransfer rest
       where
         status = case b of
                      Low  -> Ack
                      High -> Nack
-    readTransfer startT n    word ((_, Bit b):rest) =
+
+    readTransfer startT n word ((_, Bit b):rest) =
         readTransfer startT (n-1) (word .|. (toNum b `shiftL` (n-1))) rest
       where
         toNum Low  = 0
         toNum High = 1
-    readTransfer _ _    word ((n,ev):rest) =
-        (Left ("Invalid event during transfer: "++show ev), n, n) : findNext rest
+
+    readTransfer startT _ word ((t,ev):rest) =
+        (Left ("Invalid event during transfer: "++show ev), startT, t) : findNext rest
 
     endTransfer :: [(Time, I2cEvent)] -> [(Either String Transfer, Time, Time)]
     endTransfer ((_, Stop):rest) = findNext rest
