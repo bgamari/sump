@@ -2,11 +2,8 @@
 
 import Prelude hiding (mapM_, concatMap)
 import Data.Foldable
-import Data.Bits
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Either
-import Control.Monad.Trans.State
-import Control.Monad.Trans.Writer
 import Control.Lens hiding (Level, (#), none)
 import Numeric.Lens (hex)
 
@@ -69,7 +66,7 @@ drawI2c events =
         eventDia = mconcat $ zipWith (\t v->maybe mempty eventPic v # translateX t) [0..] events
         transfers = decodeTransfers [(n, t) | (n, Just t) <- zip [Time 0..] events]
         wordDia (Right (Transfer word status)) length =
-            stroke (textSVG (word ^. re hex) 14)
+            stroke (textSVG (word ^. re hex ++ " " ++ show status) 14)
             # fc black # lw none # translateY 4
             ===
             rect (realToFrac length) 1 # lw none # fc blue # opacity 0.6
