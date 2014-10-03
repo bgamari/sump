@@ -4,7 +4,13 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RankNTypes #-}
 
-module Spi where
+module Spi
+    ( -- * Types
+      SyncSignals (..)
+    , InOut (..)
+      -- * Decoding
+    , decode
+    ) where
 
 import Prelude hiding ((.), id)
 import Control.Category
@@ -18,16 +24,18 @@ import Data.Machine
 
 import System.Hardware.Sump.Types
 
-data SpiSignals a = SpiSignals
+-- | Synchronous logic signals and their clock
+data SyncSignals f a = SyncSignals
     { sclk :: a
-    , inOut :: InOut a
+    , signals :: f a
     }
     deriving (Show, Functor, Foldable, Traversable)
 
-instance Applicative SpiSignals where
-    pure x = SpiSignals x (pure x)
-    SpiSignals a b <*> SpiSignals x y = SpiSignals (a x) (b <*> y)
+instance Applicative f => Applicative (SyncSignals f) where
+    pure x = SyncSignals x (pure x)
+    SyncSignals a b <*> SyncSignals x y = SyncSignals (a x) (b <*> y)
 
+-- | Standard SPI MOSI and MISO signals
 data InOut a = InOut { mosi, miso :: a }
              deriving (Show, Functor, Foldable, Traversable)
 
@@ -46,11 +54,11 @@ dropUntilEdge getLevel edge = await >>= go . getLevel
         Just edge' | edge == edge' -> yield a
         _                          -> go l1
 
-decode :: Edge -> Process (SpiSignals Level) (InOut Level)
+decode :: Edge -> Process (SyncSignals f Level) (f Level)
 decode edge =
     wait ~> emitBits
   where
     wait = repeatedly $ do
                dropUntilEdge sclk edge
                await >>= yield
-    emitBits = repeatedly $ await >>= yield . inOut
+    emitBits = repeatedly $ await >>= yield . signals
