@@ -13,6 +13,7 @@ module System.Hardware.Sump.Types
     , Edge (..)
     , startLevel
     , finalLevel
+    , edgeLevels
       -- * Time
     , Time (..)
     ) where
@@ -36,7 +37,7 @@ makeWrapped ''Time
 
 data Edge = Falling | Rising
           deriving (Show, Eq, Ord)
-     
+
 makePrisms ''Edge
 
 startLevel :: Edge -> Level
@@ -45,3 +46,11 @@ startLevel Rising  = Low
 
 finalLevel :: Edge -> Level
 finalLevel = invert . startLevel
+
+edgeLevels :: Prism' (Level, Level) Edge
+edgeLevels = prism' fromEdge toEdge
+  where
+    fromEdge e = (startLevel e, finalLevel e)
+    toEdge (Low, High) = Just Rising
+    toEdge (High, Low) = Just Falling
+    toEdge _           = Nothing
