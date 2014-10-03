@@ -53,14 +53,15 @@ main = printing $ runEitherT $ do
                       (Invalid _) -> red
         eventDia = mconcat $ zipWith (\t v->maybe mempty eventPic v # translateX t) [0..] events
         transfers = decodeTransfers [(n, t) | (n, Just t) <- zip [Time 0..] events]
-        wordDia (Right (Transfer word status)) =
+        wordDia (Right (Transfer word status)) length =
                text (word ^. re hex) # fontSizeL 10 # fc brown
-            <> rect 9 1 # lw none # fc blue
-        wordDia _ = mempty
+            <> rect (realToFrac length) 1 # lw none # fc blue
+        wordDia _ _ = mempty
         transfersDia =
             mconcat
-            $ map (\(transfer,start,end)->
-                      wordDia transfer # translateX (start ^. _Wrapped' . to realToFrac))
+            $ map (\(transfer, Time start, Time end) ->
+                      wordDia transfer (end - start)
+                      # translateX (realToFrac start + 32))
             $ transfers
     liftIO $ print $ toListOf (each . _1 . _Right . transferWord . re hex) transfers
 
