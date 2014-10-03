@@ -55,8 +55,10 @@ main = printing $ runEitherT $ do
         eventDia = mconcat $ zipWith (\t v->maybe mempty eventPic v # translateX t) [0..] events
         transfers = decodeTransfers [(n, t) | (n, Just t) <- zip [Time 0..] events]
         wordDia (Right (Transfer word status)) length =
-               stroke (textSVG (word ^. re hex) 14) # fc black # lw none
-            <> rect (realToFrac length) 1 # lw none # fc blue
+            stroke (textSVG (word ^. re hex) 14)
+            # fc black # lw none # translateY 4
+            ===
+            rect (realToFrac length) 1 # lw none # fc blue # opacity 0.6
         wordDia _ _ = mempty
         transfersDia =
             mconcat
