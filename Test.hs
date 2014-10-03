@@ -45,6 +45,20 @@ main = printing $ runEitherT $ do
                                          (channelLevel (ch 1) s))
                      $ V.toList samples
         events = M.run $ M.supply i2cSignals (M.auto decode)
+    --liftIO $ print $ toListOf (each . _1 . _Right . transferWord . re hex) transfers
+
+    --let channels = [minBound..maxBound]
+    let channels = [ ch 0, ch 1 ]
+        i2c = drawI2c events
+    liftIO $ renderSVG "out.svg"
+                       (mkSizeSpec Nothing Nothing)
+                       (vcat' (def & sep .~ 1)
+                        [i2c, scaleY 10 $ samplesToDiagram channels samples])
+    return () :: EitherT String IO ()
+
+drawI2c :: (Renderable (Path R2) b, Backend b R2)
+        => [Maybe I2cEvent] -> Diagram b R2
+drawI2c events = 
     let eventPic ev = circle 2 # lw none # fc color
           where
             color = case ev of
@@ -66,16 +80,7 @@ main = printing $ runEitherT $ do
                       wordDia transfer (end - start)
                       # translateX (realToFrac start + 32))
             $ transfers
-    liftIO $ print $ toListOf (each . _1 . _Right . transferWord . re hex) transfers
-
-    --let channels = [minBound..maxBound]
-    let channels = [ ch 0, ch 1 ]
-    liftIO $ renderSVG "out.svg"
-                       (mkSizeSpec Nothing Nothing)
-                       (vcat' (def & sep .~ 1) [ transfersDia # padY 2, eventDia
-                                               , scaleY 10 $ samplesToDiagram channels samples])
-    return () :: EitherT String IO ()
-
+    in vcat [transfersDia # padY 2, eventDia]
 
 samplesToDiagram :: Renderable (Path R2) b
                  => [Channel] -> V.Vector Sample -> Diagram b R2
