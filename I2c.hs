@@ -8,6 +8,7 @@ module I2c
     , I2cEvent (..)
     , _Start, _Bit, _Stop, _Invalid
     , decode
+    , count
       -- * Transaction parsing
     , AckNack (..)
     , _Ack, _Nack
@@ -85,6 +86,12 @@ zipMealy x y = go x y
 cat :: Mealy a a
 cat = go where go = Mealy $ \s -> (s, go)
 
+count :: Mealy a b -> Mealy a (Int, b)
+count = go 0
+  where
+    go n x = Mealy $ \a->let (xr, x') = runMealy x a
+                         in ((n, xr), go (n+1) x')
+
 decode :: Mealy (I2cSignals Level) (Maybe I2cEvent)
 decode = idle . mapMealy (zipMealy cat edges)
   where
@@ -120,9 +127,6 @@ data Transfer = Transfer { _transferWord :: Word8
               deriving (Show)
 makeLenses ''Transfer
 
-newtype Time = Time Int
-             deriving (Show, Ord, Eq, Enum)
-
 -- | Extract the transferred bytes from a stream of I2C events
 decodeTransfers :: [(Time, I2cEvent)] -> [(Either String Transfer, Time, Time)]
 decodeTransfers = findNext
@@ -130,15 +134,16 @@ decodeTransfers = findNext
     -- drop until event after first start
     findNext :: [(Time, I2cEvent)] -> [(Either String Transfer, Time, Time)]
     findNext []  = []
-    findNext evs =
-        case drop 1 $ dropWhile (isn't _Start . snd) evs of
-          evs'@((t,_):_) -> readTransfer t 8 0 
-          []             -> []
+    findNext evs = beginTransfer $ drop 1 $ dropWhile (isn't _Start . snd) evs
+
+    beginTransfer :: [(Time, I2cEvent)] -> [(Either String Transfer, Time, Time)]
+    beginTransfer evs@((t,_) : _) = readTransfer t 8 0 evs
+    beginTransfer []              = []
 
     readTransfer :: Time -> Int -> Word8
                  -> [(Time, I2cEvent)] -> [(Either String Transfer, Time, Time)]
-    readTransfer _ _    _    []                =
-        (Left "Incomplete transfer", 0,0) : []
+    readTransfer startT _    _    []                =
+        (Left "Incomplete transfer", startT, startT) : []
     readTransfer startT 0 word ((n, Bit b):rest)    =
         (Right $ Transfer word status, startT, n) : endTransfer rest
       where
@@ -155,7 +160,7 @@ decodeTransfers = findNext
 
     endTransfer :: [(Time, I2cEvent)] -> [(Either String Transfer, Time, Time)]
     endTransfer ((_, Stop):rest) = findNext rest
-    endTransfer events           = readTransfer 8 0 events
+    endTransfer events           = beginTransfer events
 
 -- | Construct an integer from its bits, least significant bit first
 decodeInt :: (Num a, Bits a) => [Level] -> a

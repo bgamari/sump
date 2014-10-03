@@ -52,7 +52,7 @@ main = printing $ runEitherT $ do
                       (Bit _)     -> black
                       (Invalid _) -> red
         eventDia = mconcat $ zipWith (\t v->maybe mempty eventPic v # translateX t) [0..] events
-        transfers = decodeTransfers [(n, t) | (n, Just t) <- zip [0..] events]
+        transfers = decodeTransfers [(n, t) | (n, Just t) <- zip [Time 0..] events]
         wordDia (Right (Transfer word status)) =
                text (word ^. re hex) # fontSizeL 10 # fc brown
             <> rect 9 1 # lw none # fc blue
@@ -60,7 +60,7 @@ main = printing $ runEitherT $ do
         transfersDia =
             mconcat
             $ map (\(transfer,start,end)->
-                      wordDia transfer # translateX (realToFrac start))
+                      wordDia transfer # translateX (start ^. _Wrapped' . to realToFrac))
             $ transfers
     liftIO $ print $ toListOf (each . _1 . _Right . transferWord . re hex) transfers
 

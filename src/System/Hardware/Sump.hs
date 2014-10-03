@@ -2,8 +2,7 @@
 
 module System.Hardware.Sump
     ( -- * Basic Types
-      Level (..)
-    , isLow, isHigh
+      module System.Hardware.Sump.Types
     , Channel
     , ch
     , ChannelGroup (..)
@@ -45,6 +44,7 @@ import           Data.ByteString (ByteString)
 import Data.Default
 
 import System.Hardware.Serialport
+import System.Hardware.Sump.Types
 
 data ProtocolVersion = Version0
                      | Version1
@@ -146,17 +146,6 @@ setDivider sump d =
 data Stage = Stage0 | Stage1 | Stage2 | Stage3
            deriving (Eq, Ord, Bounded, Enum, Show)
 
--- | A logical high or low
-data Level = High | Low
-              deriving (Eq, Ord, Bounded, Enum, Show)
-
-isLow :: Level -> Bool
-isLow Low  = True
-isLow High = False
-
-isHigh :: Level -> Bool
-isHigh = not . isLow
-      
 -- | A logic analyzer channel
 newtype Channel = Ch Int
               deriving (Eq, Ord, Enum, Show)
