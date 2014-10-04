@@ -230,8 +230,8 @@ configureTrigger sump stage config@(ParallelTrigger {triggerValues=trigger}) = d
     forStage cmd = cmd .|. (fromIntegral (fromEnum stage) `shiftR` 2)
 
 setReadDelayCounts :: Sump
-                   -> Word16 -- ^ Read count
-                   -> Word16 -- ^ Delay count
+                   -> Word16 -- ^ Read count divided by four
+                   -> Word16 -- ^ Delay count divided by four
                    -> EitherT String IO ()
 setReadDelayCounts sump readCnt delayCnt = do
     let c = [ 0x81
