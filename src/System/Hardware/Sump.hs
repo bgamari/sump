@@ -206,7 +206,7 @@ configureTrigger sump stage config@(SerialTrigger {}) = do
     return ()
   where
     forStage :: Word8 -> Word8
-    forStage cmd = cmd .|. (fromIntegral (fromEnum stage) `shiftR` 2)
+    forStage cmd = cmd .|. (fromIntegral (fromEnum stage) `shiftL` 2)
 
 configureTrigger sump stage config@(ParallelTrigger {triggerValues=trigger}) = do
     let mask = foldl' (.|.) 0 $ map (channelBit . fst) trigger
@@ -227,7 +227,7 @@ configureTrigger sump stage config@(ParallelTrigger {triggerValues=trigger}) = d
     return ()
   where
     forStage :: Word8 -> Word8
-    forStage cmd = cmd .|. (fromIntegral (fromEnum stage) `shiftR` 2)
+    forStage cmd = cmd .|. (fromIntegral (fromEnum stage) `shiftL` 2)
 
 setReadDelayCounts :: Sump
                    -> Word16 -- ^ Read count divided by four
