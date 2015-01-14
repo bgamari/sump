@@ -17,7 +17,7 @@ library
                        System.Hardware.Sump.Types
   other-extensions:    GeneralizedNewtypeDeriving
   ghc-options:         -Wall
-  build-depends:       base >=4.7 && <4.8,
+  build-depends:       base >=4.7 && <4.9,
                        data-default >=0.5 && <0.6,
                        transformers >=0.4 && <0.5,
                        either >=4.3 && <4.4,
