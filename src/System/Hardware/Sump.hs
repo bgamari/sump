@@ -194,15 +194,15 @@ configureTrigger :: Sump
 configureTrigger sump stage config@(SerialTrigger {}) = do
     void $ command (forStage 0xc0 : word32Bytes (triggerMask config)) 0 sump
     void $ command (forStage 0xc1 : word32Bytes (triggerValue config)) 0 sump
-    command [ forStage 0xc2
-            , byte 0 (triggerDelay config)
-            , byte 1 (triggerDelay config)
-            , fromIntegral (0xf .&. fromEnum (triggerChannel config))
-              .|. fromIntegral (fromEnum $ triggerLevel config)
-            ,     if triggerStart config then 0x8 else 0
-              .|. 0x4
-              .|. fromIntegral (0xf .&. (fromEnum $ triggerChannel config) `shiftR` 4)
-            ] 0 sump
+    _ <- command [ forStage 0xc2
+                 , byte 0 (triggerDelay config)
+                 , byte 1 (triggerDelay config)
+                 , fromIntegral (0xf .&. fromEnum (triggerChannel config))
+                   .|. fromIntegral (fromEnum $ triggerLevel config)
+                 ,     if triggerStart config then 0x8 else 0
+                   .|. 0x4
+                   .|. fromIntegral (0xf .&. (fromEnum $ triggerChannel config) `shiftR` 4)
+                 ] 0 sump
     return ()
   where
     forStage :: Word8 -> Word8
