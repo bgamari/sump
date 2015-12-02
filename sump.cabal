@@ -1,7 +1,8 @@
 name:                sump
 version:             0.1.0.0
 synopsis:            A Haskell interface to SUMP-compatible logic analyzers
--- description:         
+description:         A Haskell interface to SUMP-compatible logic analyzers including
+                     a utilities for visualization of logic traces.
 homepage:            http://github.com/bgamari/sump
 license:             BSD3
 license-file:        LICENSE
@@ -11,6 +12,10 @@ copyright:           (c) 2014 Ben Gamari
 category:            Hardware
 build-type:          Simple
 cabal-version:       >=1.10
+
+source-repository head
+  type:                git
+  location:            https://github.com/bgamari/sump
 
 library
   exposed-modules:     System.Hardware.Sump
