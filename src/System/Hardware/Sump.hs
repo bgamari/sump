@@ -35,7 +35,7 @@ import Data.List (foldl')
 import Control.Monad (replicateM_, void)
 import Numeric (readHex, showHex)
 
-import Control.Monad.Trans.Either
+import Control.Monad.Trans.Except
 import Control.Monad.IO.Class
 
 import qualified Data.Vector as V
@@ -57,7 +57,7 @@ data Sump = Sump
     }
 
 
-open :: FilePath -> EitherT String IO Sump
+open :: FilePath -> ExceptT String IO Sump
 open path = do
     s <- liftIO $ openSerial path settings
     liftIO $ flush s
@@ -69,14 +69,14 @@ open path = do
                                      , timeout = 1
                                      }
 
-command :: [Word8] -> Int -> Sump -> EitherT String IO ByteString
+command :: [Word8] -> Int -> Sump -> ExceptT String IO ByteString
 command c replyLen (Sump sump) = do
     liftIO $ putStrLn $ concat $ map (flip showHex " ") c
     void $ liftIO $ send sump (BS.pack c)
     reply <- liftIO $ recv sump replyLen
     return reply
 
-reset :: Sump -> EitherT String IO ()
+reset :: Sump -> ExceptT String IO ()
 reset = void . command [0x0] 0
 
 newtype Sample = Sample Word32
@@ -92,18 +92,18 @@ channelLevel (Ch c) (Sample s)
   | bit c .&. s == 0  = Low
   | otherwise         = High
 
-readSample :: Sump -> EitherT String IO (Maybe Sample)
+readSample :: Sump -> ExceptT String IO (Maybe Sample)
 readSample sump = do
     s <- liftIO $ recv (sumpDevice sump) 4
     --liftIO $ print s
     case BS.unpack s of
-      bs@[_,_,_,_] -> right $ Just $ Sample
-                        $ foldl' (\accum a->(accum `shiftL` 8) .|. fromIntegral a) 0
-                        $ reverse bs
-      []           -> right Nothing
-      _            -> left "Unknown response"
+      bs@[_,_,_,_] -> return $ Just $ Sample
+                             $ foldl' (\accum a->(accum `shiftL` 8) .|. fromIntegral a) 0
+                             $ reverse bs
+      []           -> return Nothing
+      _            -> throwE "Unknown response"
 
-run :: Sump -> EitherT String IO (V.Vector Sample)
+run :: Sump -> ExceptT String IO (V.Vector Sample)
 run sump = do
     void $ command [0x1] 0 sump
     let go accum = do
@@ -121,15 +121,15 @@ run sump = do
     first <- readFirst
     go (V.singleton first)
 
-identify :: Sump -> EitherT String IO (ByteString, ProtocolVersion)
+identify :: Sump -> ExceptT String IO (ByteString, ProtocolVersion)
 identify sump = do
     reply <- BS.reverse `fmap` command [0x2] 4 sump
     let device = BS.take 3 reply
     version <- case map (chr . fromIntegral) $ BS.unpack $ BS.drop 3 reply of
-                   ['0'] -> right Version0
-                   ['1'] -> right Version1
-                   [c]   -> right $ VersionUnknown c
-                   []    -> left "No reply to ID command"
+                   ['0'] -> return Version0
+                   ['1'] -> return Version1
+                   [c]   -> return $ VersionUnknown c
+                   []    -> throwE "No reply to ID command"
                    _     -> error "identify: This can't happen"
     return (device, version)
 
@@ -139,7 +139,7 @@ byte b a = fromIntegral $ a `shiftR` (8*b)
 word32Bytes :: Word32 -> [Word8]
 word32Bytes v = [byte 0 v, byte 1 v, byte 2 v, byte 3 v]
 
-setDivider :: Sump -> Int -> EitherT String IO ()
+setDivider :: Sump -> Int -> ExceptT String IO ()
 setDivider sump d =
     void $ command [0x80, byte 0 d, byte 1 d, byte 2 d, 0] 0 sump
 
@@ -190,7 +190,7 @@ levelTrigger values =
 configureTrigger :: Sump
                -> Stage
                -> Trigger
-               -> EitherT String IO ()
+               -> ExceptT String IO ()
 configureTrigger sump stage config@(SerialTrigger {}) = do
     void $ command (forStage 0xc0 : word32Bytes (triggerMask config)) 0 sump
     void $ command (forStage 0xc1 : word32Bytes (triggerValue config)) 0 sump
@@ -232,7 +232,7 @@ configureTrigger sump stage config@(ParallelTrigger {triggerValues=trigger}) = d
 setReadDelayCounts :: Sump
                    -> Word16 -- ^ Read count divided by four
                    -> Word16 -- ^ Delay count divided by four
-                   -> EitherT String IO ()
+                   -> ExceptT String IO ()
 setReadDelayCounts sump readCnt delayCnt = do
     let c = [ 0x81
             , byte 0 readCnt, byte 1 readCnt
@@ -250,7 +250,7 @@ data Flags = Flags { demux :: Bool
                    }
            deriving (Show)
 
-setFlags :: Sump -> Flags -> EitherT String IO ()
+setFlags :: Sump -> Flags -> ExceptT String IO ()
 setFlags sump flags = do
     let groups = enabledGroups flags
         v = foldl' (.|.) 0

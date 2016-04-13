@@ -2,7 +2,7 @@ name:                sump
 version:             0.1.0.1
 synopsis:            A Haskell interface to SUMP-compatible logic analyzers
 description:         A Haskell interface to SUMP-compatible logic analyzers including
-                     a utilities for visualization of logic traces.
+                     utilities for visualization of captured logic traces.
 homepage:            http://github.com/bgamari/sump
 license:             BSD3
 license-file:        LICENSE
@@ -22,10 +22,9 @@ library
                        System.Hardware.Sump.Types
   other-extensions:    GeneralizedNewtypeDeriving
   ghc-options:         -Wall
-  build-depends:       base >=4.7 && <4.9,
+  build-depends:       base >=4.7 && <4.10,
                        data-default >=0.5 && <0.6,
-                       transformers >=0.4 && <0.5,
-                       either >=4.3 && <4.5,
+                       transformers >=0.4 && <0.6,
                        vector >=0.10 && <0.12,
                        bytestring >=0.10 && <0.11,
                        lens,
