@@ -1,5 +1,5 @@
 name:                sump
-version:             0.1.0.1
+version:             0.1.0.2
 synopsis:            A Haskell interface to SUMP-compatible logic analyzers
 description:         A Haskell interface to SUMP-compatible logic analyzers including
                      utilities for visualization of captured logic traces.
